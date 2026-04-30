@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	postgresImageName = "postgres"
+	postgresImageName  = "postgres"
+	postgresDockerfile = "Dockerfile"
 )
 
 var (
@@ -18,33 +19,12 @@ var (
 		"linux/arm64",
 	}
 
-	images = map[string]imageSpec{
-		postgresImageName: {
-			Name:       postgresImageName,
-			Dockerfile: "Dockerfile",
-		},
-	}
-
 	// CloudNativePG can auto-detect the PostgreSQL major version only when the
 	// tag starts with the PostgreSQL major version, optionally followed by
 	// numeric dot-separated version components. Examples: 17, 17.7,
 	// 17.7-pgduckdb-v1.1.1, 17.7_20260429, 13.3.2.1-1.
 	cloudNativePGTagPattern = regexp.MustCompile(`^[0-9]+(\.[0-9]+)*([._-].+)?$`)
 )
-
-type imageSpec struct {
-	Name       string
-	Dockerfile string
-	BuildArgs  []dagger.BuildArg
-}
-
-func getImage(name string) (imageSpec, error) {
-	image, ok := images[name]
-	if !ok {
-		return imageSpec{}, fmt.Errorf("unknown image %q", name)
-	}
-	return image, nil
-}
 
 func validateCloudNativePGTags(tags []string) error {
 	for _, tag := range tags {
@@ -55,20 +35,18 @@ func validateCloudNativePGTags(tags []string) error {
 	return nil
 }
 
-func (p *Pgtapes) buildDockerfileImage(image imageSpec) *dagger.Container {
+func (p *Pgtapes) buildDockerfileImage() *dagger.Container {
 	return p.Source.DockerBuild(dagger.DirectoryDockerBuildOpts{
-		Dockerfile: image.Dockerfile,
-		BuildArgs:  image.BuildArgs,
+		Dockerfile: postgresDockerfile,
 	})
 }
 
-func (p *Pgtapes) buildDockerfileImageVariants(image imageSpec) []*dagger.Container {
+func (p *Pgtapes) buildDockerfileImageVariants() []*dagger.Container {
 	variants := make([]*dagger.Container, 0, len(imagePlatforms))
 	for _, platform := range imagePlatforms {
 		variant := p.Source.DockerBuild(dagger.DirectoryDockerBuildOpts{
-			Dockerfile: image.Dockerfile,
+			Dockerfile: postgresDockerfile,
 			Platform:   platform,
-			BuildArgs:  image.BuildArgs,
 		})
 		variants = append(variants, variant)
 	}
@@ -82,11 +60,7 @@ func (p *Pgtapes) BuildImage(
 	// +default="postgres"
 	image string,
 ) (*dagger.Container, error) {
-	spec, err := getImage(image)
-	if err != nil {
-		return nil, err
-	}
-	return p.buildDockerfileImage(spec), nil
+	return p.buildDockerfileImage(), nil
 }
 
 // BuildPushImages builds a multi-platform image and publishes it to the
@@ -96,10 +70,6 @@ func (p *Pgtapes) BuildImage(
 func (p *Pgtapes) BuildPushImages(
 	ctx context.Context,
 
-	// Image to build. Currently supported: "postgres".
-	// +default="postgres"
-	image string,
-
 	// Container registry address, e.g. "123456789.dkr.ecr.us-east-1.amazonaws.com".
 	registry string,
 
@@ -107,21 +77,15 @@ func (p *Pgtapes) BuildPushImages(
 	// must start with a PostgreSQL version, e.g. ["17", "17.7-pgduckdb-v1.1.1"].
 	tags []string,
 ) ([]string, error) {
-	spec, err := getImage(image)
-	if err != nil {
+	if err := validateCloudNativePGTags(tags); err != nil {
 		return nil, err
-	}
-	if spec.Name == postgresImageName {
-		if err := validateCloudNativePGTags(tags); err != nil {
-			return nil, err
-		}
 	}
 
 	published := []string{}
-	variants := p.buildDockerfileImageVariants(spec)
+	variants := p.buildDockerfileImageVariants()
 
 	for _, tag := range tags {
-		ref := fmt.Sprintf("%s/%s:%s", registry, spec.Name, tag)
+		ref := fmt.Sprintf("%s/%s:%s", registry, postgresImageName, tag)
 		addr, err := dag.Container().Publish(ctx, ref, dagger.ContainerPublishOpts{
 			PlatformVariants: variants,
 		})

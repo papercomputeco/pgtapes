@@ -1,14 +1,8 @@
 # pgtapes
 
-Container image build repo for Tapes Postgres deployments.
+The Postgres image ready made for `tapes` with a CloudNativePG base + `pg_duckdb`.
 
-## Image
-
-- `postgres`: CloudNativePG-compatible Postgres with `pg_duckdb` and `vector` enabled.
-
-The primary image is built from the top-level `Dockerfile`, following the same simple convention as CloudNativePG's `postgres-containers` repo. Image-specific support files live under `images/postgres/`.
-
-## Building with Dagger
+## Build
 
 Build the local-platform Postgres image:
 
@@ -24,4 +18,6 @@ dagger call build-push-postgres-images \
   --tags '17.7-pgduckdb-v1.1.1'
 ```
 
-CloudNativePG requires Postgres image tags to start with the PostgreSQL version so it can detect the major version. Valid examples include `17`, `17.7`, and `17.7-pgduckdb-v1.1.1`; `latest` is not valid.
+CloudNativePG requires Postgres image tags to start with the PostgreSQL version
+so it can detect the major version.
+We version these images with `{postgres-version}-pgduckdb-{pgduckdb-version}`.

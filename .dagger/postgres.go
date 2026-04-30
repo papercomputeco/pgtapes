@@ -2,36 +2,13 @@ package main
 
 import (
 	"context"
-	"fmt"
 
 	"dagger/pgtapes/internal/dagger"
 )
 
-const (
-	testPgUser = "tapes"
-	testPgPass = "tapes"
-	testPgDB   = "tapes"
-	testPgPort = 5432
-)
-
-// PostgresService provides a ready-to-run Postgres service with the pg_duckdb
-// and vector extensions installed for local smoke tests and downstream tests.
-func (p *Pgtapes) PostgresService() *dagger.Service {
-	ctr := p.Source.DockerBuild(dagger.DirectoryDockerBuildOpts{
-		Dockerfile: images[postgresImageName].Dockerfile,
-	})
-
-	return ctr.
-		WithEnvVariable("POSTGRES_USER", testPgUser).
-		WithEnvVariable("POSTGRES_PASSWORD", testPgPass).
-		WithEnvVariable("POSTGRES_DB", testPgDB).
-		WithExposedPort(testPgPort).
-		AsService(dagger.ContainerAsServiceOpts{UseEntrypoint: true})
-}
-
 // BuildPostgresImage builds the local-platform postgres container image.
 func (p *Pgtapes) BuildPostgresImage() *dagger.Container {
-	return p.buildDockerfileImage(images[postgresImageName])
+	return p.buildDockerfileImage()
 }
 
 // BuildPushPostgresImages builds a multi-platform postgres image and publishes
@@ -53,10 +30,5 @@ func (p *Pgtapes) BuildPushPostgresImages(
 		return nil, err
 	}
 
-	return p.BuildPushImages(ctx, postgresImageName, registry, tags)
-}
-
-// PostgresDSN returns the connection string used to reach PostgresService.
-func (p *Pgtapes) PostgresDSN() string {
-	return fmt.Sprintf("host=postgres user=%s password=%s dbname=%s port=%d sslmode=disable", testPgUser, testPgPass, testPgDB, testPgPort)
+	return p.BuildPushImages(ctx, registry, tags)
 }
