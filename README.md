@@ -3,8 +3,9 @@
 The PostgreSQL image that [`tapes`](https://github.com/papercomputeco/tapes) runs
 on: a [CloudNativePG](https://cloudnative-pg.io/) base image with
 [`pg_duckdb`](https://github.com/duckdb/pg_duckdb) and
-[`pgvector`](https://github.com/pgvector/pgvector) available and enabled on first
-start.
+[`pgvector`](https://github.com/pgvector/pgvector) built in. Run it directly and
+both extensions are created on first start; under the CloudNativePG operator the
+`Cluster` manifest asks for them ([details](#under-cloudnativepg)).
 
 Published images:
 
@@ -30,11 +31,11 @@ The image adds two things to the CloudNativePG base:
 
 - **`pg_duckdb`.** Its runtime artifacts (`libduckdb.so`, `pg_duckdb.so`, bitcode,
   and extension SQL) are copied from the official `pg_duckdb` image, and
-  `pg_duckdb` is appended to `shared_preload_libraries` in the sample config so
-  it loads at startup.
+  `pg_duckdb` is appended to `shared_preload_libraries` in
+  `postgresql.conf.sample`.
 - **The standard Postgres entrypoint.** `docker-entrypoint.sh`, the initdb
-  helpers, and `gosu` are staged in so the same image works both under the
-  CloudNativePG operator and with a plain `docker run`.
+  helpers, and `gosu` are staged in so the image also runs under a plain
+  `docker run`, not only under the CloudNativePG operator.
 
 `initdb.d/0000-install-extensions.sql` is installed into
 `/docker-entrypoint-initdb.d/`. The standard entrypoint runs it the first time a
@@ -44,6 +45,11 @@ data directory is initialized, which issues:
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pg_duckdb;
 ```
+
+Both of those are entrypoint-and-sample-config mechanisms, so they apply to the
+standalone path only. The CloudNativePG operator supplies its own entrypoint and
+generates its own PostgreSQL configuration — see
+[Under CloudNativePG](#under-cloudnativepg).
 
 ## Quickstart
 
@@ -69,6 +75,39 @@ psql "postgres://postgres:password@localhost:5432/postgres" \
  plpgsql   | 1.0
  vector    | 0.8.1
 ```
+
+## Under CloudNativePG
+
+Everything above is the standalone path: the stock entrypoint runs
+`/docker-entrypoint-initdb.d/`, and PostgreSQL picks up `postgresql.conf.sample`
+when it initializes a data directory. `docker run` and Compose therefore get both
+extensions created and `pg_duckdb` preloaded with no extra configuration.
+
+The CloudNativePG operator uses neither. It bootstraps the cluster itself and
+generates PostgreSQL's configuration from the `Cluster` spec, so a `Cluster` on
+this image starts with no extensions created and `pg_duckdb` not preloaded unless
+the manifest asks for them:
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: tapes
+spec:
+  imageName: public.ecr.aws/g4e5l3z3/papercomputeco/postgres:17.7-pgduckdb-1.1.1
+  postgresql:
+    shared_preload_libraries:
+      - pg_duckdb # vector needs no preloading
+  bootstrap:
+    initdb:
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS vector;
+        - CREATE EXTENSION IF NOT EXISTS pg_duckdb;
+```
+
+`postInitApplicationSQL` runs once, against the application database, when the
+cluster is bootstrapped. On a cluster that already exists, issue the same
+`CREATE EXTENSION` statements against that database yourself.
 
 ## Building
 
@@ -134,7 +173,8 @@ extension present and loadable rather than a stock one. `pgtapes` is that image:
 `tapes local up` provisions this published image for a local stack. `pg_duckdb`
 is preloaded alongside it to give an analytical query path over the same data.
 Because the base is a CloudNativePG image, the same build also runs under the
-CloudNativePG operator in Kubernetes without being rebuilt.
+CloudNativePG operator in Kubernetes without being rebuilt, given a `Cluster`
+spec that requests the extensions.
 
 ## Development
 
