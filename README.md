@@ -1,37 +1,202 @@
 # `pgtapes`
 
-The Postgres image ready made for `tapes` with a CloudNativePG base + `pg_duckdb`.
+The PostgreSQL image that [`tapes`](https://github.com/papercomputeco/tapes) runs
+on: a [CloudNativePG](https://cloudnative-pg.io/) base image with
+[`pg_duckdb`](https://github.com/duckdb/pg_duckdb) and
+[`pgvector`](https://github.com/pgvector/pgvector) built in. Run it directly and
+both extensions are created on first start; under the CloudNativePG operator the
+`Cluster` manifest asks for them ([details](#under-cloudnativepg)).
+
+Published images:
+
+```
+public.ecr.aws/g4e5l3z3/papercomputeco/postgres:17.7-pgduckdb-1.1.1
+```
+
+Built for `linux/amd64` and `linux/arm64`.
+
+## What's in the image
+
+| | |
+| --- | --- |
+| Base | `ghcr.io/cloudnative-pg/postgresql:17.7-standard-bookworm` |
+| PostgreSQL | 17.7 |
+| `pg_duckdb` | 1.1.0, staged from `pgduckdb/pgduckdb:17-v1.1.1` |
+| `pgvector` | 0.8.1, from the CloudNativePG standard base |
+| Runs as | uid `26` (`postgres`) |
+| Port | 5432 |
+| Data volume | `/var/lib/postgresql/data` |
+
+The image adds two things to the CloudNativePG base:
+
+- **`pg_duckdb`.** Its runtime artifacts (`libduckdb.so`, `pg_duckdb.so`, bitcode,
+  and extension SQL) are copied from the official `pg_duckdb` image, and
+  `pg_duckdb` is appended to `shared_preload_libraries` in
+  `postgresql.conf.sample`.
+- **The standard Postgres entrypoint.** `docker-entrypoint.sh`, the initdb
+  helpers, and `gosu` are staged in so the image also runs under a plain
+  `docker run`, not only under the CloudNativePG operator.
+
+`initdb.d/0000-install-extensions.sql` is installed into
+`/docker-entrypoint-initdb.d/`. The standard entrypoint runs it the first time a
+data directory is initialized, which issues:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_duckdb;
+```
+
+Both of those are entrypoint-and-sample-config mechanisms, so they apply to the
+standalone path only. The CloudNativePG operator supplies its own entrypoint and
+generates its own PostgreSQL configuration — see
+[Under CloudNativePG](#under-cloudnativepg).
 
 ## Quickstart
 
+Run the published image directly. PostgreSQL requires a password, and the data
+directory is initialized on first start:
+
 ```bash
-# build the image locally - dagger exports the image to your local docker images
+docker run --rm -e POSTGRES_PASSWORD=password -p 5432:5432 \
+  public.ecr.aws/g4e5l3z3/papercomputeco/postgres:17.7-pgduckdb-1.1.1
+```
+
+Then confirm both extensions came up:
+
+```bash
+psql "postgres://postgres:password@localhost:5432/postgres" \
+  -c "select extname, extversion from pg_extension order by extname;"
+```
+
+```
+  extname  | extversion
+-----------+------------
+ pg_duckdb | 1.1.0
+ plpgsql   | 1.0
+ vector    | 0.8.1
+```
+
+## Under CloudNativePG
+
+Everything above is the standalone path: the stock entrypoint runs
+`/docker-entrypoint-initdb.d/`, and PostgreSQL picks up `postgresql.conf.sample`
+when it initializes a data directory. `docker run` and Compose therefore get both
+extensions created and `pg_duckdb` preloaded with no extra configuration.
+
+The CloudNativePG operator uses neither. It bootstraps the cluster itself and
+generates PostgreSQL's configuration from the `Cluster` spec, so a `Cluster` on
+this image starts with no extensions created and `pg_duckdb` not preloaded unless
+the manifest asks for them:
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: tapes
+spec:
+  imageName: public.ecr.aws/g4e5l3z3/papercomputeco/postgres:17.7-pgduckdb-1.1.1
+  postgresql:
+    shared_preload_libraries:
+      - pg_duckdb # vector needs no preloading
+  bootstrap:
+    initdb:
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS vector;
+        - CREATE EXTENSION IF NOT EXISTS pg_duckdb;
+```
+
+`postInitApplicationSQL` runs once, against the application database, when the
+cluster is bootstrapped. On a cluster that already exists, issue the same
+`CREATE EXTENSION` statements against that database yourself.
+
+## Building
+
+The build is a [Dagger](https://dagger.io/) module. `make build` builds the
+image for your local platform and loads it into your local container image
+store:
+
+```bash
 make build
-
-# run the image - you must provide postgres a password
-docker run -it --rm -e POSTGRES_PASSWORD=password postgres:17.7-pgduckdb-1.1.1
 ```
 
-## Build and publish
+That is a thin wrapper over the module's own entrypoint:
 
-Build the local-platform Postgres image:
-
-```sh
-dagger call build-postgres-image
+```bash
+dagger call build-postgres-image export-image --name postgres:17.7-pgduckdb-1.1.1
 ```
 
-Publish the multi-platform images:
+`make help` lists every target. `NAME` and `TAG` override the exported image
+reference:
 
-```sh
+```bash
+make build NAME=pgtapes TAG=dev
+```
+
+## Publishing
+
+`make build-push` builds the multi-platform image and pushes it to a registry.
+It needs credentials for whatever registry you point it at:
+
+```bash
+make build-push REGISTRY=public.ecr.aws/your-alias TAG=17.7-pgduckdb-1.1.1
+```
+
+Which calls:
+
+```bash
 dagger call build-push-postgres-images \
   --registry "$REGISTRY" \
   --tags "17.7-pgduckdb-1.1.1"
 ```
 
-CloudNativePG requires Postgres image tags start with the PostgreSQL version
-so it can detect the major version.
-We conform with this with these images by using the following version schema:
+Published references follow `<registry>/postgres:<tag>`.
+
+## Image tags
+
+CloudNativePG detects the PostgreSQL major version from the image tag, so tags
+must begin with the PostgreSQL version. These images use:
 
 ```
 {postgres-version}-pgduckdb-{pgduckdb-version}
 ```
+
+Tags are validated at publish time and a non-conforming tag — including
+`latest` — fails the build rather than producing an image CloudNativePG cannot
+place.
+
+## How `tapes` uses it
+
+[`tapes`](https://github.com/papercomputeco/tapes) is a session-capture server
+that stores captured agent sessions in PostgreSQL, and uses `pgvector` for
+semantic search over span embeddings — so it needs a PostgreSQL image with that
+extension present and loadable rather than a stock one. `pgtapes` is that image:
+`tapes local up` provisions this published image for a local stack. `pg_duckdb`
+is preloaded alongside it to give an analytical query path over the same data.
+Because the base is a CloudNativePG image, the same build also runs under the
+CloudNativePG operator in Kubernetes without being rebuilt, given a `Cluster`
+spec that requests the extensions.
+
+## Development
+
+The repository ships a Nix flake with the Go toolchain, `make`, and `dagger`:
+
+```bash
+nix develop      # or `direnv allow`, which loads the same shell
+```
+
+## License
+
+Dual-licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option. Unless you explicitly state otherwise, any contribution
+intentionally submitted for inclusion in the work by you, as defined in the
+Apache-2.0 license, shall be dual licensed as above, without any additional
+terms or conditions.
+
+These terms cover this repository's own sources — the Dockerfile, build module,
+init scripts, and packaging. The container image they produce bundles
+third-party software, including PostgreSQL, `pgvector`, `pg_duckdb`, DuckDB, and
+the CloudNativePG base image, each of which remains under its own license.
