@@ -61,5 +61,6 @@ dagger call build-push-postgres-images \
 ```
 
 The module validates every tag before building — the constraint and its
-reason are in [Image tags](./tags.md). CI builds the image on every push;
-publishing to the public registry is a manually triggered workflow.
+reason are in [Image tags](./tags.md). CI builds the image on pushes to `main`
+and on pull requests; publishing to the public registry is a manually
+triggered workflow.
