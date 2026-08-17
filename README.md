@@ -42,9 +42,12 @@ psql "postgres://postgres:password@localhost:5432/postgres" \
 
 ## Documentation
 
-Reference documentation lives in [`docs/`](docs/introduction.md): running the
-image standalone and under CloudNativePG, what is in it, the tag scheme, and
-building it from this repository.
+Reference documentation is published at
+[tapes.dev/docs/pgtapes](https://tapes.dev/docs/pgtapes/): running the image
+standalone and under CloudNativePG, what is in it, the tag scheme, and building
+it from this repository. Its source is [`docs/`](docs/introduction.md) here —
+the site syncs those files at build time, so they ship in the same pull request
+as the change they describe.
 
 ## License
 
