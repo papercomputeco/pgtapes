@@ -10,7 +10,7 @@ permissions:
 jobs:
   build:
     name: Publish images
-    runs-on: depot-ubuntu-24.04
+    runs-on: depot-ubuntu-24.04-4
 
     steps:
       - name: Checkout
