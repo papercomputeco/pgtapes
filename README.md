@@ -61,7 +61,7 @@ intentionally submitted for inclusion in the work by you, as defined in the
 Apache-2.0 license, shall be dual licensed as above, without any additional
 terms or conditions.
 
-These terms cover this repository's own sources — the Dockerfile, build module,
+These terms cover this repository's own sources — the Dockerfile, build files,
 init scripts, and packaging. The container image they produce bundles
 third-party software, including PostgreSQL, `pgvector`, `pg_duckdb`, DuckDB, and
 the CloudNativePG base image, each of which remains under its own license.

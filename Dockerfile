@@ -2,7 +2,7 @@
 
 ARG PG_MAJOR=17
 ARG CNPG_IMAGE=ghcr.io/cloudnative-pg/postgresql:17.7-standard-bookworm
-ARG PGDUCKDB_IMAGE=pgduckdb/pgduckdb:17-v1.1.1
+ARG PGDUCKDB_IMAGE=docker.io/pgduckdb/pgduckdb:17-v1.1.1
 
 FROM ${PGDUCKDB_IMAGE} AS pgduckdb
 ARG PG_MAJOR
