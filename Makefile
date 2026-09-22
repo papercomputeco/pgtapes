@@ -1,19 +1,36 @@
 REGISTRY ?= public.ecr.aws/g4e5l3z3/papercomputeco
 NAME ?= postgres
 TAG ?= 17.7-pgduckdb-1.1.1
+CONTAINER_TOOL ?= docker
+PLATFORMS ?= linux/amd64,linux/arm64
+BUILDX_BUILDER ?= pgtapes-builder
 
-.PHONY:build
-build: ## Builds the postgres image and exports locally
-	dagger call \
-		build-postgres-image \
-		export-image --name $(NAME):$(TAG)
+.PHONY: check
+check: ## Build the image and verify PostgreSQL reports ready through Dagger
+	dagger check
+
+.PHONY: build
+build: ## Build the postgres image and load it into the local image store
+	$(CONTAINER_TOOL) build -t $(NAME):$(TAG) -f Dockerfile .
+
+.PHONY: validate-tag
+validate-tag: ## Validate that TAG is compatible with CloudNativePG version detection
+	@printf '%s\n' '$(TAG)' | grep -Eq '^[0-9]+(\.[0-9]+)*([._-].+)?$$' || \
+		{ echo 'TAG must start with the PostgreSQL major version and must not be latest' >&2; exit 1; }
 
 .PHONY: build-push
-build-push: ## Build and publish the multi-arch image to the public registry
-	dagger call \
-		build-push-postgres-images \
-			--registry "$(REGISTRY)" \
-			--tags "$(TAG)"
+build-push: validate-tag ## Build and publish the multi-platform image to the public registry
+	@$(CONTAINER_TOOL) buildx inspect $(BUILDX_BUILDER) >/dev/null 2>&1 || \
+		($(CONTAINER_TOOL) buildx create --driver docker-container --name $(BUILDX_BUILDER) >/dev/null 2>&1 || \
+		 $(CONTAINER_TOOL) buildx inspect $(BUILDX_BUILDER) >/dev/null)
+	$(CONTAINER_TOOL) buildx build \
+		--builder $(BUILDX_BUILDER) \
+		--platform $(PLATFORMS) \
+		--tag $(REGISTRY)/postgres:$(TAG) \
+		--provenance=false \
+		--sbom=false \
+		--push \
+		-f Dockerfile .
 
 .PHONY: help
 .DEFAULT_GOAL := help

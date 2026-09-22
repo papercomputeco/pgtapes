@@ -1,23 +1,16 @@
-// Pgtapes CI/CD
-//
-// Package main provides reproducible image builds and publishing for the
-// pgtapes container image repository.
+// Package main provides pgtapes' Dagger checks.
 package main
 
 import "dagger/pgtapes/internal/dagger"
 
-// Pgtapes is the main module for the pgtapes CI/CD pipeline.
+// Pgtapes provides repository checks.
 type Pgtapes struct {
-	// Project source directory.
-	//
 	// +private
 	Source *dagger.Directory
 }
 
-// New creates a new pgtapes CI/CD module instance.
+// New creates the pgtapes Dagger module.
 func New(
-	// Project source directory.
-	//
 	// +defaultPath="/"
 	// +ignore=[".git", ".direnv", ".devenv", "build", "tmp"]
 	source *dagger.Directory,

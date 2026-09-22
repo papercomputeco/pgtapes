@@ -35,7 +35,7 @@ themselves differently — that split is the main thing worth understanding
 about this image, and [Run the image](./running.md) walks both.
 
 This repository contains no server code and no database schema. It is a
-Dockerfile, an init script, and a build module; the tapes server owns its own
+Dockerfile, an init script, and build automation; the tapes server owns its own
 migrations. To run tapes itself, see
 <https://tapes.dev/docs/installation/> — `tapes local up` provisions this
 published image for a local stack.

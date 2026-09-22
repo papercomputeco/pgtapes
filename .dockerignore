@@ -1,0 +1,4 @@
+**
+!Dockerfile
+!initdb.d/
+!initdb.d/0000-install-extensions.sql
